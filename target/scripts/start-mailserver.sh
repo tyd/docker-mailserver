@@ -11,6 +11,7 @@ ENABLE_FAIL2BAN="${ENABLE_FAIL2BAN:=0}"
 ENABLE_FETCHMAIL="${ENABLE_FETCHMAIL:=0}"
 ENABLE_LDAP="${ENABLE_LDAP:=0}"
 ENABLE_MANAGESIEVE="${ENABLE_MANAGESIEVE:=0}"
+ENABLE_MYSQL="${ENABLE_MYSQL:=0}"
 ENABLE_POP3="${ENABLE_POP3:=0}"
 ENABLE_POSTGREY="${ENABLE_POSTGREY:=0}"
 ENABLE_QUOTAS="${ENABLE_QUOTAS:=1}"
@@ -23,6 +24,14 @@ LDAP_START_TLS="${LDAP_START_TLS:=no}"
 LOGROTATE_INTERVAL="${LOGROTATE_INTERVAL:=${REPORT_INTERVAL:-daily}}"
 LOGWATCH_INTERVAL="${LOGWATCH_INTERVAL:=none}"
 MOVE_SPAM_TO_JUNK="${MOVE_SPAM_TO_JUNK:=1}"
+MYSQL_HOSTS="${MYSQL_HOSTS:=localhost}"
+MYSQL_DOVECOT_ITERATE_QUERY="${MYSQL_DOVECOT_ITERATE_QUERY:=SELECT email AS user FROM users}"
+MYSQL_DOVECOT_PASSWORD_QUERY="${MYSQL_DOVECOT_PASSWORD_QUERY:=SELECT email AS user, password FROM users WHERE email='%u' AND enabled='Y'}"
+MYSQL_DOVECOT_USER_QUERY="${MYSQL_DOVECOT_USER_QUERY:=SELECT maildir AS home, 5000 AS uid, 5000 AS gid, CONCAT('*:bytes=',quota) AS quota_rule FROM users WHERE email='%u' AND enabled='Y'}"
+MYSQL_POSTFIX_ALIAS_QUERY="${MYSQL_POSTFIX_ALIAS_QUERY:=SELECT destination FROM aliases WHERE alias='%s' AND enabled='Y'}"
+MYSQL_POSTFIX_DOMAIN_QUERY="${MYSQL_POSTFIX_DOMAIN_QUERY:=SELECT domain FROM domains WHERE domain='%s' AND enabled='Y';}"
+MYSQL_POSTFIX_TRANSPORT_QUERY="${MYSQL_POSTFIX_TRANSPORT_QUERY:=SELECT transport FROM transport WHERE domain='%d'}"
+MYSQL_POSTFIX_USER_QUERY="${MYSQL_POSTFIX_USER_QUERY:=SELECT email FROM users WHERE email='%s' AND enabled='Y'}"
 NETWORK_INTERFACE="${NETWORK_INTERFACE:=eth0}"
 ONE_DIR="${ONE_DIR:=0}"
 OVERRIDE_HOSTNAME="${OVERRIDE_HOSTNAME}"
@@ -104,6 +113,7 @@ function register_functions
   fi
 
   [[ ${ENABLE_LDAP} -eq 1 ]] && _register_setup_function "_setup_ldap"
+  [[ ${ENABLE_MYSQL} -eq 1 ]] && _register_setup_function "_setup_mysql"
   [[ ${ENABLE_SASLAUTHD} -eq 1 ]] && _register_setup_function "_setup_saslauthd"
   [[ ${ENABLE_POSTGREY} -eq 1 ]] && _register_setup_function "_setup_postgrey"
 
@@ -190,7 +200,7 @@ function register_functions
   [[ ${ENABLE_FAIL2BAN} -eq 1 ]] &&	_register_start_daemon "_start_daemons_fail2ban"
   [[ ${ENABLE_FETCHMAIL} -eq 1 ]] && _register_start_daemon "_start_daemons_fetchmail"
   [[ ${ENABLE_CLAMAV} -eq 1 ]] &&	_register_start_daemon "_start_daemons_clamav"
-  [[ ${ENABLE_LDAP} -eq 0 ]] && _register_start_daemon "_start_changedetector"
+  [[ ${ENABLE_LDAP} -eq 0 ]] && [[ ${ENABLE_MYSQL} -eq 0 ]] && _register_start_daemon "_start_changedetector"
 
   _register_start_daemon "_start_daemons_amavis"
 }
@@ -331,6 +341,10 @@ function _check_hostname
 function _check_environment_variables
 {
   _notify "task" "Check that there are no conflicts with env variables [in ${FUNCNAME[0]}]"
+  if [[ ${ENABLE_LDAP} = 1 ]] && [[ ${ENABLE_MYSQL} = 1 ]]; then
+    _notify 'fatal' "MySQL and LDAP must not be enabled at the same time."
+    _defunc
+  fi
   return 0
 }
 
@@ -418,6 +432,7 @@ function _setup_default_vars
     echo "export ENABLE_FETCHMAIL='${ENABLE_FETCHMAIL}'"
     echo "export ENABLE_LDAP='${ENABLE_LDAP}'"
     echo "export ENABLE_MANAGESIEVE='${ENABLE_MANAGESIEVE}'"
+    echo "export ENABLE_MYSQL='${ENABLE_MYSQL}'"
     echo "export ENABLE_POP3='${ENABLE_POP3}'"
     echo "export ENABLE_POSTGREY='${ENABLE_POSTGREY}'"
     echo "export ENABLE_QUOTAS='${ENABLE_QUOTAS}'"
@@ -431,6 +446,14 @@ function _setup_default_vars
     echo "export LOGWATCH_INTERVAL='${LOGWATCH_INTERVAL}'"
     echo "export LOGWATCH_RECIPIENT='${LOGWATCH_RECIPIENT}'"
     echo "export MOVE_SPAM_TO_JUNK='${MOVE_SPAM_TO_JUNK}'"
+    echo "export MYSQL_HOSTS='${MYSQL_HOSTS}'"
+    echo "export MYSQL_DOVECOT_ITERATE_QUERY='${MYSQL_DOVECOT_ITERATE_QUERY}'"
+    echo "export MYSQL_DOVECOT_PASSWORD_QUERY='${MYSQL_DOVECOT_PASSWORD_QUERY}'"
+    echo "export MYSQL_DOVECOT_USER_QUERY='${MYSQL_DOVECOT_USER_QUERY}'"
+    echo "export MYSQL_POSTFIX_ALIAS_QUERY='${MYSQL_POSTFIX_ALIAS_QUERY}'"
+    echo "export MYSQL_POSTFIX_DOMAIN_QUERY='${MYSQL_POSTFIX_DOMAIN_QUERY}'"
+    echo "export MYSQL_POSTFIX_TRANSPORT_QUERY='${MYSQL_POSTFIX_TRANSPORT_QUERY}'"
+    echo "export MYSQL_POSTFIX_USER_QUERY='${MYSQL_POSTFIX_USER_QUERY}'"
     echo "export NETWORK_INTERFACE='${NETWORK_INTERFACE}'"
     echo "export ONE_DIR='${ONE_DIR}'"
     echo "export OVERRIDE_HOSTNAME='${OVERRIDE_HOSTNAME}'"
@@ -538,6 +561,86 @@ function _setup_dovecot_hostname
 
   _notify 'inf' "Applying hostname to /etc/dovecot/conf.d/15-lda.conf"
   sed -i 's/^#hostname =.*$/hostname = '"${HOSTNAME}"'/g' /etc/dovecot/conf.d/15-lda.conf
+}
+
+function _setup_mysql() {
+  _notify 'task' 'Setting up MySQL'
+
+  _notify 'inf' "Configuring postfix MySQL"
+
+  # set postfix queries
+  sed -i  "s/^query.*/query = ${MYSQL_POSTFIX_ALIAS_QUERY}/g" "/etc/postfix/mysql-aliases.cf"
+  sed -i  "s/^query.*/query = ${MYSQL_POSTFIX_DOMAIN_QUERY}/g" "/etc/postfix/mysql-domains.cf"
+  sed -i  "s/^query.*/query = ${MYSQL_POSTFIX_TRANSPORT_QUERY}/g" "/etc/postfix/mysql-transports.cf"
+  sed -i  "s/^query.*/query = ${MYSQL_POSTFIX_USER_QUERY}/g" "/etc/postfix/mysql-users.cf"
+
+  declare -A _mysql_mapping
+
+  _mysql_mapping["MYSQL_HOSTS"]="${MYSQL_HOSTS:="${MYSQL_HOST}"}"
+  _mysql_mapping["MYSQL_DBNAME"]="${MYSQL_DBNAME:="${MYSQL_DB}"}"
+  _mysql_mapping["MYSQL_USER"]="${MYSQL_USER:="${MYSQL_USER}"}"
+  _mysql_mapping["MYSQL_PASSWORD"]="${MYSQL_PASSWORD:="${MYSQL_PASSWORD}"}"
+
+  for var in "${!_mysql_mapping[@]}"; do
+    export "${var}"="${_mysql_mapping[${var}]}"
+  done
+
+  for f in /etc/postfix/mysql-*
+  do
+    configomat.sh "MYSQL_" "${f}"
+  done
+
+  _notify 'inf' "Configuring dovecot for MySQL"
+
+  # set dovecot queries
+  sed -i  "s/^user_query.*/user_query = ${MYSQL_DOVECOT_USER_QUERY}/g" "/etc/dovecot/dovecot-sql.conf.ext"
+  sed -i  "s/^iterate_query.*/iterate_query = ${MYSQL_DOVECOT_ITERATE_QUERY}/g" "/etc/dovecot/dovecot-sql.conf.ext"
+  sed -i  "s/^password_query.*/password_query = ${MYSQL_DOVECOT_PASSWORD_QUERY}/g" "/etc/dovecot/dovecot-sql.conf.ext"
+
+  _dovecot_mysql_connect="host=${MYSQL_HOSTS} dbname=${MYSQL_DBNAME} user=${MYSQL_USER} password=${MYSQL_PASSWORD}"
+
+  configomat.sh "MYSQL_" "/etc/dovecot/dovecot-sql.conf.ext"
+
+  _dovecot_mysql_connect_escaped=$(sed 's/[&/\]/\\&/g' <<< "${_dovecot_mysql_connect}")
+  sed -i  "s/^connect.*/connect = ${_dovecot_mysql_connect_escaped}/g" "/etc/dovecot/dovecot-sql.conf.ext"
+
+  # Add  domainname to vhost.
+  echo "${DOMAINNAME}" >> /tmp/vhost.tmp
+
+  _notify 'inf' "Enabling dovecot mysql authentification"
+  sed -i -e '/\!include auth-sql\.conf\.ext/s/^#//' /etc/dovecot/conf.d/10-auth.conf
+  sed -i -e '/\!include auth-passwdfile\.inc/s/^/#/' /etc/dovecot/conf.d/10-auth.conf
+
+  _notify 'inf' "Configuring Postfix for MySQL"
+  if [[ -f /etc/postfix/mysql-users.cf ]]
+  then
+    postconf -e "virtual_mailbox_maps = mysql:/etc/postfix/mysql-users.cf"
+  else
+    _notify 'inf' "==> Warning: /etc/postfix/mysql-users.cf not found"
+  fi
+
+  if [[ -f /etc/postfix/mysql-aliases.cf ]]
+  then
+    postconf -e virtual_alias_maps="mysql:/etc/postfix/mysql-aliases.cf"
+  else
+    _notify 'inf' "==> Warning: /etc/postfix/mysql-aliases.cf not found"
+  fi
+
+  if [[ -f /etc/postfix/mysql-domains.cf ]]
+  then
+    postconf -e virtual_mailbox_domains="mysql:/etc/postfix/mysql-domains.cf"
+  else
+    _notify 'inf' "==> Warning: /etc/postfix/mysql-domains.cf not found"
+  fi
+
+  if [[ -f /etc/postfix/mysql-transports.cf ]]
+  then
+    postconf -e transport_maps="mysql:/etc/postfix/mysql-transports.cf"
+  else
+    _notify 'inf' "==> Warning: /etc/postfix/mysql-transports.cf not found"
+  fi
+
+  return 0
 }
 
 function _setup_dovecot
@@ -691,7 +794,7 @@ function _setup_dovecot_local_user
   : >/etc/postfix/vmailbox
   : >/etc/dovecot/userdb
 
-  if [[ -f /tmp/docker-mailserver/postfix-accounts.cf ]] && [[ ${ENABLE_LDAP} -ne 1 ]]
+  if [[ -f /tmp/docker-mailserver/postfix-accounts.cf ]] && [[ ${ENABLE_LDAP} -ne 1 ]] && [[ ${ENABLE_MYSQL} -ne 1 ]]
   then
     _notify 'inf' "Checking file line endings"
     sed -i 's/\r//g' /tmp/docker-mailserver/postfix-accounts.cf
@@ -753,9 +856,9 @@ function _setup_dovecot_local_user
 
   if ! grep '@' /tmp/docker-mailserver/postfix-accounts.cf | grep -q '|'
   then
-    if [[ ${ENABLE_LDAP} -eq 0 ]]
+    if [ "${ENABLE_LDAP}" -eq 0 ] && [ "${ENABLE_MYSQL}" -eq 0 ]
     then
-      _notify 'fatal' "Unless using LDAP, you need at least 1 email account to start Dovecot."
+      _notify 'fatal' "Unless using LDAP or MySQL, you need at least 1 email account to start Dovecot."
       _defunc
     fi
   fi
@@ -913,6 +1016,9 @@ function _setup_spoof_protection
   if [[ ${ENABLE_LDAP} -eq 1 ]]
   then
     postconf -e "smtpd_sender_login_maps = ldap:/etc/postfix/ldap-users.cf ldap:/etc/postfix/ldap-aliases.cf ldap:/etc/postfix/ldap-groups.cf"
+  elif [[ ${ENABLE_MYSQL} -eq 1 ]]
+  then
+    postconf -e "smtpd_sender_login_maps = mysql:/etc/postfix/mysql-users.cf mysql:/etc/postfix/mysql-aliases.cf"
   else
     if [[ -f /etc/postfix/regexp ]]
     then

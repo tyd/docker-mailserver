@@ -36,6 +36,10 @@ test/config/without-virtual/
 test/config/with-domain/
 test/onedir
 test/duplicate_configs
+test/alias/config/postfix-virtual.cf
+test/quota/config/dovecot-quotas.cf
+test/relay/config/postfix-relaymap.cf
+test/relay/config/postfix-sasl-password.cf
 
 config.bak
 testconfig.bak

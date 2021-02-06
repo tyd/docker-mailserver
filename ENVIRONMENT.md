@@ -479,6 +479,63 @@ The following variables overwrite the default values for ```/etc/dovecot/dovecot
 - Note: The left-hand value is the directory attribute, the right hand value is the dovecot variable.
 - More details on the [Dovecot Wiki](https://wiki.dovecot.org/AuthDatabase/LDAP/PasswordLookups)
 
+#### MySQL
+
+##### ENABLE_MYSQL
+
+- **0** => `mysql support` is disabled
+- 1 => `mysql support` is enabled
+
+Note: MySQL usage needs `ENABLE_SASLAUTHD=0`
+##### MYSQL_HOSTS
+
+- empty => localhost
+
+##### MYSQL_DBNAME
+ - => Database name to use for MySQL domains, users and aliases.
+ - Note: This will need a schema applied, see [example here](https://github.com/tyd/docker-mailserver/blob/feature/mysql/test/docker-mariadb/bootstrap/mail.sql) 
+
+##### MYSQL_USER
+  - => Username for MySQL user with read/write access to MYSQL_DBNAME
+
+##### MYSQL_PASSWORD
+ - => Password for MySQL user with read/write access to MYSQL_DBNAME
+
+##### MYSQL_DOVECOT_USER_QUERY
+
+- empty => default query `SELECT maildir AS home, 5000 AS uid, 5000 AS gid, CONCAT('*:bytes=',quota) AS quota_rule FROM users WHERE email='%u' AND enabled='Y'`
+- Note: See [dovecot sql documention](https://doc.dovecot.org/configuration_manual/authentication/sql/) for query expansion options
+
+##### MYSQL_DOVECOT_PASSWORD_QUERY
+
+- empty => default query `SELECT email AS user, password FROM users WHERE email='%u' AND enabled='Y'`
+- Note: See [dovecot sql documention](https://doc.dovecot.org/configuration_manual/authentication/sql/) for query expansion options
+
+
+##### MYSQL_DOVECOT_ITERATE_QUERY
+
+- empty => default query `SELECT email AS user FROM users`
+
+##### MYSQL_POSTFIX_ALIAS_QUERY
+
+- empty => default query `SELECT destination FROM aliases WHERE alias='%s' AND enabled='Y'`
+- Note: See [postfix mysql docs](http://www.postfix.org/mysql_table.5.html) for query expansion options
+
+##### MYSQL_POSTFIX_DOMAIN_QUERY
+
+- empty => default query `SELECT domain FROM domains WHERE domain='%s' AND enabled='Y'`
+- Note: See [postfix mysql docs](http://www.postfix.org/mysql_table.5.html) for query expansion options
+
+##### MYSQL_POSTFIX_TRANSPORT_QUERY
+
+- empty => default query `SELECT transport FROM transport WHERE domain='%d'`
+- Note: See [postfix mysql docs](http://www.postfix.org/mysql_table.5.html) for query expansion options
+
+##### MYSQL_POSTFIX_USER_QUERY
+
+- empty => default query `SELECT email FROM users WHERE email='%s' AND enabled='Y'`
+- Note: See [postfix mysql docs](http://www.postfix.org/mysql_table.5.html) for query expansion options
+
 #### Postgrey
 
 ##### ENABLE_POSTGREY

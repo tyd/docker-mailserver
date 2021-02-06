@@ -41,7 +41,7 @@ RUN \
   # A - D
   altermime amavisd-new apt-transport-https arj binutils bzip2 \
   dovecot-core dovecot-imapd dovecot-ldap dovecot-lmtpd \
-  dovecot-managesieved dovecot-pop3d dovecot-sieve dovecot-solr \
+  dovecot-managesieved dovecot-mysql dovecot-pop3d dovecot-sieve dovecot-solr \
   dumb-init ca-certificates cabextract clamav clamav-daemon cpio curl \
   # E - O
   ed fail2ban fetchmail file gamin gnupg gzip iproute2 iptables \
@@ -49,7 +49,7 @@ RUN \
   libmail-spf-perl libnet-dns-perl libsasl2-modules lrzip lzop \
   netcat-openbsd nomarch opendkim opendkim-tools opendmarc \
   # P - Z
-  pax pflogsumm postgrey p7zip-full postfix-ldap postfix-pcre \
+  pax pflogsumm postgrey p7zip-full postfix-ldap postfix-mysql postfix-pcre \
   postfix-policyd-spf-python postsrsd pyzor \
   razor rpm2cpio rsyslog sasl2-bin spamassassin supervisor \
   unrar-free unzip whois xz-utils >/dev/null && \
@@ -100,6 +100,17 @@ RUN \
   ./mkcert.sh 2>&1 >/dev/null && \
   mkdir -p /usr/lib/dovecot/sieve-pipe /usr/lib/dovecot/sieve-filter /usr/lib/dovecot/sieve-global && \
   chmod 755 -R /usr/lib/dovecot/sieve-pipe /usr/lib/dovecot/sieve-filter /usr/lib/dovecot/sieve-global
+
+# –––––––––––––––––––––––––––––––––––––––––––––––
+# ––– MySQL ––––––––––––––––
+# –––––––––––––––––––––––––––––––––––––––––––––––
+COPY target/dovecot/dovecot-sql.conf.ext /etc/dovecot
+COPY \
+  target/postfix/mysql-aliases.cf \
+  target/postfix/mysql-domains.cf \
+  target/postfix/mysql-transports.cf \
+  target/postfix/mysql-users.cf \
+  /etc/postfix/
 
 # –––––––––––––––––––––––––––––––––––––––––––––––
 # ––– LDAP & Spamassassin's Cron ––––––––––––––––

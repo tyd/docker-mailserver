@@ -1,0 +1,5 @@
+driver         = mysql
+connection     = "host={{DB_HOST}} dbname={{DB_NAME}} user={{DB_USER}} password={{DB_PASS}}"
+user_query     = {{DOVECOT_USER_QUERY}}
+iterate_query  = {{DOVECOT_ITERATE_QUERY}}
+password_query = {{DOVECOT_PASSWORD_QUERY}}
